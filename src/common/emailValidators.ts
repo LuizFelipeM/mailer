@@ -1,0 +1,2 @@
+export const emailValidation = (...values: string[]) => values.reduce((acc, val) => acc && /^(([^<>()[\]\.,;:\s@\"]+(\.[^<>()[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i.test(val), true)
+export const validateEmails = (values?: string[]) => values ? !emailValidation(...values) : false

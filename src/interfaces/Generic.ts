@@ -1,0 +1,1 @@
+export type KeyValuePair<T = unknown> = { [x: string]: T }

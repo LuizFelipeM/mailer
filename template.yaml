@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  mailer
+
+  Sample SAM Template for mailer
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+    Runtime: nodejs14.x
+    Handler: functions/handler/app.handler
+
+Resources:
+  # Lambda Functions
+  APISendEmailFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: APISendEmail
+      CodeUri: build/functions/ApiSendEmail/
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SendEmailFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RenderFunction
+        - DynamoDBReadPolicy:
+            TableName: !Ref SystemsTable
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: Lambda
+            Destination: !GetAtt SendEmailFunction.Arn
+      Events:
+        APISendEmail:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /send-email
+            Method: post
+
+  APIRenderFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: APIRender
+      CodeUri: build/functions/ApiRender/
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RenderFunction
+      Events:
+        APISendEmail:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /render
+            Method: post
+
+  QueueSendEmailFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: QueueSendEmail
+      CodeUri: build/functions/QueueSendEmail/
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SendEmailFunction
+      Events:
+        SendEmail:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SendEmailQueue.Arn
+            BatchSize: 10
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: Lambda
+            Destination: !GetAtt SendEmailFunction.Arn
+          # Add onFailure to SQS queue
+
+  CreateSystemFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: CreateSystem
+      CodeUri: build/functions/CreateSystem/
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SystemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SystemsTable
+      Events:
+        CreateSystem:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /create-system
+            Method: post
+
+  SavePartialFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: SavePartial
+      CodeUri: build/functions/SavePartial/
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SystemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PartialsTable
+      Events:
+        SavePartial:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /save-partial
+            Method: post
+
+  SaveTemplateFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: SaveTemplate
+      CodeUri: build/functions/SaveTemplate/
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SystemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PartialsTable
+      Events:
+        SaveTemplate:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /save-template
+            Method: post
+
+  SendEmailFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: SendEmail
+      CodeUri: build/functions/SendEmail/
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SystemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PartialsTable
+        - Statement:
+            - Effect: Allow
+              Action: '*'
+              Resource:
+                - arn:aws:ses:*:*:identity/*
+
+  RenderFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: Render
+      CodeUri: build/functions/Render/
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SystemsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TemplatesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PartialsTable
+
+  # SQS Queue
+  SendEmailQueue:
+    Type: AWS::SQS::Queue
+
+  # DynamoDB tables
+  SystemsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: systems
+      PrimaryKey:
+        Name: id
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+  TemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: templates
+      KeySchema:
+        - AttributeName: system
+          KeyType: HASH
+        - AttributeName: trigger
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: system
+          AttributeType: S
+        - AttributeName: trigger
+          AttributeType: S
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+  PartialsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: partials
+      KeySchema:
+        - AttributeName: system
+          KeyType: HASH
+        - AttributeName: name
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: system
+          AttributeType: S
+        - AttributeName: name
+          AttributeType: S
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+Outputs:
+  Api:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

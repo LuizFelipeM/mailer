@@ -1,0 +1,19 @@
+TemplatesTable:
+    Type: AWS::DynamoDB::Table
+    TableName: templates,
+    KeySchema:
+      - AttributeName: 'id'
+        KeyType: 'HASH'
+    AttributeDefinitions:
+      - AttributeName: 'id'
+        AttributeType: 'S'
+    GlobalSecondaryIndexes: 
+      - IndexName: 'trigger-index'
+        Projection:
+          ProjectionType: 'ALL'
+        KeySchema:
+          - AttributeName: 'trigger'
+            KeyType: 'HASH'
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
